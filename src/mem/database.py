@@ -174,32 +174,42 @@ CREATE TABLE IF NOT EXISTS summaries (
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Full-text search index (external content mode - reads from summaries table)
+-- Full-text search index (standalone mode - triggers keep it in sync)
+-- Note: NOT using external content mode (content='summaries') because:
+-- 1. FTS5 needs title column which lives in sources, not summaries
+-- 2. Triggers insert data including title via JOIN
+-- 3. Standalone mode avoids the schema mismatch that caused corruption
 CREATE VIRTUAL TABLE IF NOT EXISTS summaries_fts USING fts5(
     source_id,
     title,
     summary_text,
-    raw_text,
-    content=summaries,
-    content_rowid=rowid
+    raw_text
 );
 
--- Triggers to keep summaries FTS in sync
+-- Triggers to keep summaries FTS in sync (title comes from sources via JOIN)
 CREATE TRIGGER IF NOT EXISTS summaries_ai AFTER INSERT ON summaries BEGIN
     INSERT INTO summaries_fts(rowid, source_id, title, summary_text, raw_text)
-    VALUES (NEW.rowid, NEW.source_id, NEW.title, NEW.summary_text, NEW.raw_text);
+    SELECT s.rowid, s.source_id, src.title, s.summary_text, s.raw_text
+    FROM summaries s JOIN sources src ON s.source_id = src.id
+    WHERE s.source_id = NEW.source_id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS summaries_ad AFTER DELETE ON summaries BEGIN
     INSERT INTO summaries_fts(summaries_fts, rowid, source_id, title, summary_text, raw_text)
-    VALUES ('delete', OLD.rowid, OLD.source_id, OLD.title, OLD.summary_text, OLD.raw_text);
+    VALUES('delete', OLD.rowid, OLD.source_id,
+           (SELECT title FROM sources WHERE id = OLD.source_id),
+           OLD.summary_text, OLD.raw_text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS summaries_au AFTER UPDATE ON summaries BEGIN
     INSERT INTO summaries_fts(summaries_fts, rowid, source_id, title, summary_text, raw_text)
-    VALUES ('delete', OLD.rowid, OLD.source_id, OLD.title, OLD.summary_text, OLD.raw_text);
+    VALUES('delete', OLD.rowid, OLD.source_id,
+           (SELECT title FROM sources WHERE id = OLD.source_id),
+           OLD.summary_text, OLD.raw_text);
     INSERT INTO summaries_fts(rowid, source_id, title, summary_text, raw_text)
-    VALUES (NEW.rowid, NEW.source_id, NEW.title, NEW.summary_text, NEW.raw_text);
+    SELECT s.rowid, s.source_id, src.title, s.summary_text, s.raw_text
+    FROM summaries s JOIN sources src ON s.source_id = src.id
+    WHERE s.source_id = NEW.source_id;
 END;
 
 -- Entity mentions resolved to glossary entities
