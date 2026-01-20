@@ -78,7 +78,7 @@ flowchart LR
     Search --> CLI[CLI]
     Search --> Skill[Skill]
 
-    DB -.->|optional| Turso[Turso Cloud Sync]
+    DB -.->|experimental| Turso[Turso Cloud Sync]
 ```
 
 **Key insight:** Text search over summaries + human-in-the-loop entity resolution outperforms vector embeddings for this use case.
@@ -159,7 +159,7 @@ See the `skill/` directory for the Claude Code skill.
 
 Config lives at `~/.claude/memory/config.yaml`. Created with defaults on first run.
 
-**Local SQLite is the default.** No cloud account needed — just install and use. For multi-machine sync, you can optionally enable [Turso](https://turso.tech/) (has a free tier).
+**Local SQLite is the recommended path.** No cloud account needed — just install and use. Turso cloud sync exists but has known issues with FTS5 index corruption and is disabled by default.
 
 ```yaml
 # Example: add local markdown sources
@@ -169,8 +169,8 @@ sources:
       path: ~/Documents/Meeting Notes
       pattern: "**/*.md"
 
-# Optional: enable Turso cloud sync for multi-machine access
-turso_enabled: true
+# Experimental: Turso cloud sync (has FTS5 issues, not recommended)
+# turso_enabled: true
 ```
 
 ### Source Types
@@ -212,7 +212,7 @@ Start small. Add entries as you encounter confusion in search results.
 
 - **Local by default** — All data stays in `~/.claude/memory/memory.db`
 - **LLM extraction** — `mem process` sends conversation text to Anthropic API for summarization
-- **Optional cloud sync** — Turso sync is opt-in via config; disabled by default
+- **Experimental cloud sync** — Turso sync exists but has FTS5 issues; disabled by default
 - **No telemetry** — This tool doesn't phone home
 
 ## Architecture
