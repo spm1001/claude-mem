@@ -1,0 +1,109 @@
+# Glossary Example
+# Copy to ~/.claude/memory/glossary.yaml and customize for your context
+#
+# Entities help the memory system:
+# - Recognize variations of the same thing ("GeoX" and "Regional Lift")
+# - Understand organizational context (who reports to whom)
+# - Track relationships between concepts
+#
+# When to add entries:
+# - A concept has multiple names (OAuth, oauth2, "OAuth 2.0")
+# - Acronyms are ambiguous or team-specific (CS&P vs CSP)
+# - Project codenames exist (GeoX = Region:Lift)
+# - You keep failing to find content you know exists
+#
+# Start small. Add entries as you encounter confusion in search results.
+# A glossary of 20-50 well-chosen entities is better than 500 generic ones.
+#
+# Structure:
+#   key: internal identifier (lowercase, underscores)
+#     name: Display name
+#     type: organization | person | product | project | concept
+#     parent: key of parent entity (optional)
+#     aliases: list of alternative names/abbreviations
+#     description: Brief context
+
+version: 1
+entities:
+  # Example: Organizations
+  acme_corp:
+    name: Acme Corp
+    type: organization
+    aliases:
+      - Acme
+      - ACME
+    description: Parent company
+
+  engineering:
+    name: Engineering
+    type: organization
+    parent: acme_corp
+    aliases:
+      - Eng
+      - Engineering Team
+    description: Product development team
+
+  data_team:
+    name: Data Team
+    type: organization
+    parent: engineering
+    aliases:
+      - Data
+      - Analytics
+      - Data & Analytics
+    description: Data engineering and analytics
+
+  # Example: People
+  jane_smith:
+    name: Jane Smith
+    type: person
+    parent: engineering
+    aliases:
+      - Jane
+      - JS
+    description: Engineering lead
+
+  # Example: Products
+  widget_pro:
+    name: Widget Pro
+    type: product
+    parent: engineering
+    aliases:
+      - Widget
+      - WP
+      - The Widget
+    description: Main product offering
+
+  widget_analytics:
+    name: Widget Analytics
+    type: product
+    parent: data_team
+    aliases:
+      - Analytics Dashboard
+      - WA
+    description: Analytics module for Widget Pro
+
+  # Example: Projects
+  q4_launch:
+    name: Q4 Launch
+    type: project
+    parent: widget_pro
+    aliases:
+      - Q4
+      - Fall Launch
+    description: Major release planned for Q4
+
+  # Example: Concepts
+  customer_journey:
+    name: Customer Journey
+    type: concept
+    aliases:
+      - CJ
+      - Journey Mapping
+      - User Journey
+    description: Framework for understanding customer touchpoints
+
+# Auto-mappings (learned from extraction, pending review)
+# These are added automatically when Claude encounters new terms
+# Review periodically and graduate good ones to entities above
+auto_mappings: {}

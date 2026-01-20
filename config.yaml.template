@@ -1,0 +1,55 @@
+# Conversation Memory System - Configuration Template
+# Copy to ~/.claude/memory/config.yaml and customize
+
+# Source locations
+sources:
+  claude_ai:
+    path: "~/.claude/claude-ai/cache/conversations"  # Synced via claude-data-sync
+    pattern: "*.json"
+
+  claude_code:
+    path: "~/.claude/projects"
+    pattern: "**/*.jsonl"             # JSONL format, not JSON
+    min_lines: 10                     # Skip warmup-only agent files
+    include_subagents: true           # Index subagent conversations
+
+  claude_desktop:
+    enabled: false
+    path: "~/Library/Application Support/Claude"
+    pattern: "**/*.json"
+
+  local_md:
+    # Add your markdown note locations here
+    # example:
+    #   path: "~/Documents/Notes"
+    #   pattern: "**/*.md"
+
+  beads:
+    # Discovery uses ~/.beads/registry.json automatically for active projects
+    # Fallback paths for dormant projects (daemon not running)
+    fallback_paths:
+      - "~/Repos/*/.beads/issues.jsonl"
+      - "~/.claude/.beads/issues.jsonl"
+
+  google:
+    enabled: false
+    credentials_path: "~/.claude/memory/google_credentials.json"
+
+# Processing settings
+processing:
+  batch_size: 20
+  summary_target_words: 200           # Claude.ai averages 259, match that range
+  max_context_tokens: 100000
+  skip_tool_results: true             # Exclude tool stdout from full_text extraction
+
+# Search settings
+search:
+  default_results: 5
+  snippet_chars: 200
+  exclude_subagents: false            # Option to filter out subagents from results
+
+# For relocating moved files
+scan_paths:
+  - "~/.claude"
+  - "~/Library/Application Support/Claude"
+  - "~/Documents"
