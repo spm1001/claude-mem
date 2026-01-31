@@ -163,3 +163,65 @@ def test_upsert_source_with_metadata(temp_db):
     assert stored_metadata['tool_count'] == 1
     assert stored_metadata['skills_used'] == ['close']
     assert '/src/main.py' in stored_metadata['files_touched']
+
+
+def test_fts_update_trigger(temp_db):
+    """FTS stays in sync through INSERT/UPDATE/DELETE cycle.
+
+    Regression test for FTS5 trigger bug where UPDATE trigger used wrong
+    delete syntax (INSERT...VALUES('delete',...) instead of DELETE FROM)
+    for standalone FTS5 tables.
+    """
+    # Setup: create source and summary
+    temp_db.upsert_source(
+        source_id='test:fts',
+        source_type='test',
+        title='FTS Trigger Test',
+    )
+    temp_db.upsert_summary(
+        source_id='test:fts',
+        summary_text='Original summary about pandas dataframes',
+    )
+
+    # Verify INSERT trigger worked - FTS search finds it
+    results = temp_db.search('pandas')
+    assert len(results) == 1
+    assert results[0].source_id == 'test:fts'
+
+    # UPDATE the summary (this triggers summaries_au)
+    temp_db.upsert_summary(
+        source_id='test:fts',
+        summary_text='Updated summary about numpy arrays',
+    )
+
+    # Verify UPDATE trigger worked:
+    # - Old content should NOT be searchable
+    old_results = temp_db.search('pandas')
+    assert len(old_results) == 0, "Old FTS content not deleted"
+
+    # - New content SHOULD be searchable
+    new_results = temp_db.search('numpy')
+    assert len(new_results) == 1, "New FTS content not inserted"
+    assert new_results[0].source_id == 'test:fts'
+
+
+def test_fts_title_from_sources(temp_db):
+    """FTS index includes title from sources table via JOIN."""
+    temp_db.upsert_source(
+        source_id='test:title',
+        source_type='test',
+        title='Kubernetes deployment guide',
+    )
+    temp_db.upsert_summary(
+        source_id='test:title',
+        summary_text='How to deploy services',
+    )
+
+    # Should find via title (from sources table)
+    results = temp_db.search('Kubernetes')
+    assert len(results) == 1
+    assert results[0].title == 'Kubernetes deployment guide'
+
+    # Should also find via summary text
+    results = temp_db.search('deploy services')
+    assert len(results) == 1

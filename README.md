@@ -63,23 +63,7 @@ echo 'export ANTHROPIC_API_KEY=sk-ant-...' > ~/.claude/memory/env
 
 ## How It Works
 
-```mermaid
-flowchart LR
-    subgraph Sources
-        CC[Claude Code]
-        CA[Claude.ai]
-        HO[Handoffs]
-        MD[Local Markdown]
-    end
-
-    Sources --> Adapters
-    Adapters --> DB[(SQLite + FTS5)]
-    DB --> Search
-    Search --> CLI[CLI]
-    Search --> Skill[Skill]
-
-    DB -.->|experimental| Turso[Turso Cloud Sync]
-```
+![claude-mem Architecture](docs/architecture.png)
 
 **Key insight:** Text search over summaries + human-in-the-loop entity resolution outperforms vector embeddings for this use case.
 

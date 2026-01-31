@@ -16,6 +16,7 @@ from .adapters.cloud_sessions import discover_cloud_sessions, CloudSessionSource
 from .adapters.handoffs import discover_handoffs, HandoffSource
 from .adapters.local_md import discover_local_md, LocalMdSource
 from .adapters.beads import discover_beads, BeadsSource
+from .adapters.arc import discover_arc, ArcSource
 
 
 @click.group()
@@ -31,7 +32,7 @@ def main(ctx):
 @main.command()
 @click.option('--dry-run', is_flag=True, help="Show what would be indexed without storing")
 @click.option('--source', 'source_filter',
-              type=click.Choice(['claude_code', 'claude_ai', 'handoffs', 'cloud_sessions', 'local_md', 'beads']),
+              type=click.Choice(['claude_code', 'claude_ai', 'handoffs', 'cloud_sessions', 'local_md', 'beads', 'arc']),
               help="Only scan this source type")
 @click.pass_context
 def scan(ctx, dry_run, source_filter):
@@ -45,6 +46,7 @@ def scan(ctx, dry_run, source_filter):
     scan_cloud = source_filter is None or source_filter == 'cloud_sessions'
     scan_local_md = source_filter is None or source_filter == 'local_md'
     scan_beads = source_filter is None or source_filter == 'beads'
+    scan_arc = source_filter is None or source_filter == 'arc'
 
     if not scan_claude_code:
         click.echo(f"Skipping Claude Code conversations...")
@@ -336,11 +338,62 @@ def scan(ctx, dry_run, source_filter):
                     beads_new += 1
                     click.echo(f"  + {source.title[:70]}...")
 
+        # Scan arc (lightweight work tracker)
+        arc_new = 0
+        arc_updated = 0
+        arc_skipped = 0
+
+        if scan_arc:
+            click.echo(f"\nScanning arc...")
+            for source in discover_arc(config):
+                existing = db.get_source(source.source_id)
+                created_at_str = source.created_at.isoformat() if source.created_at else ''
+
+                # Use done_at for change detection (items change when completed)
+                change_key = f"{created_at_str}:{source.status}"
+                if existing and existing.get('content_hash') == change_key:
+                    arc_skipped += 1
+                    continue
+
+                if dry_run:
+                    status = "exists" if existing else "new"
+                    click.echo(f"  [{status}] {source.source_id}: {source.title[:60]}...")
+                    if not existing:
+                        arc_new += 1
+                    continue
+
+                db.upsert_source(
+                    source_id=source.source_id,
+                    source_type='arc',
+                    title=source.title,
+                    path=str(source.path),
+                    created_at=source.created_at,
+                    updated_at=source.done_at or source.created_at,
+                    project_path=source.project_path,
+                    content_hash=change_key,
+                    metadata=source.metadata,
+                )
+
+                full_text = source.full_text()
+                db.upsert_summary(
+                    source_id=source.source_id,
+                    summary_text=full_text,
+                    has_presummary=True,
+                    raw_text=full_text,
+                )
+                db.mark_processed(source.source_id)
+
+                if existing:
+                    arc_updated += 1
+                else:
+                    arc_new += 1
+                    click.echo(f"  + {source.title[:70]}...")
+
         if dry_run:
-            click.echo(f"\nDry run: {new_count} Claude Code, {ai_new} Claude.ai, {handoff_new} handoffs, {cloud_new} cloud, {local_md_new} local_md, {beads_new} beads new")
+            click.echo(f"\nDry run: {new_count} Claude Code, {ai_new} Claude.ai, {handoff_new} handoffs, {cloud_new} cloud, {local_md_new} local_md, {beads_new} beads, {arc_new} arc new")
         else:
-            total_new = new_count + ai_new + handoff_new + cloud_new + local_md_new + beads_new
-            total_updated = updated_count + ai_updated + handoff_updated + cloud_updated + local_md_updated + beads_updated
+            total_new = new_count + ai_new + handoff_new + cloud_new + local_md_new + beads_new + arc_new
+            total_updated = updated_count + ai_updated + handoff_updated + cloud_updated + local_md_updated + beads_updated + arc_updated
             click.echo(f"\nIndexed: {total_new} new, {total_updated} updated")
             click.echo(f"  Claude Code: {new_count} new, {updated_count} updated")
             click.echo(f"  Claude.ai: {ai_new} new, {ai_updated} updated")
@@ -348,6 +401,7 @@ def scan(ctx, dry_run, source_filter):
             click.echo(f"  Cloud sessions: {cloud_new} new, {cloud_updated} updated")
             click.echo(f"  Local markdown: {local_md_new} new, {local_md_updated} updated, {local_md_skipped} unchanged")
             click.echo(f"  Beads: {beads_new} new, {beads_updated} updated, {beads_skipped} unchanged")
+            click.echo(f"  Arc: {arc_new} new, {arc_updated} updated, {arc_skipped} unchanged")
 
 
 def _extract_compacted_summary(content: str) -> str | None:

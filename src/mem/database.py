@@ -194,18 +194,14 @@ CREATE TRIGGER IF NOT EXISTS summaries_ai AFTER INSERT ON summaries BEGIN
     WHERE s.source_id = NEW.source_id;
 END;
 
+-- Note: summaries_fts is STANDALONE mode, so use regular DELETE (not the special
+-- INSERT ... VALUES('delete', ...) syntax which is only for contentless/external content)
 CREATE TRIGGER IF NOT EXISTS summaries_ad AFTER DELETE ON summaries BEGIN
-    INSERT INTO summaries_fts(summaries_fts, rowid, source_id, title, summary_text, raw_text)
-    VALUES('delete', OLD.rowid, OLD.source_id,
-           (SELECT title FROM sources WHERE id = OLD.source_id),
-           OLD.summary_text, OLD.raw_text);
+    DELETE FROM summaries_fts WHERE rowid = OLD.rowid;
 END;
 
 CREATE TRIGGER IF NOT EXISTS summaries_au AFTER UPDATE ON summaries BEGIN
-    INSERT INTO summaries_fts(summaries_fts, rowid, source_id, title, summary_text, raw_text)
-    VALUES('delete', OLD.rowid, OLD.source_id,
-           (SELECT title FROM sources WHERE id = OLD.source_id),
-           OLD.summary_text, OLD.raw_text);
+    DELETE FROM summaries_fts WHERE rowid = OLD.rowid;
     INSERT INTO summaries_fts(rowid, source_id, title, summary_text, raw_text)
     SELECT s.rowid, s.source_id, src.title, s.summary_text, s.raw_text
     FROM summaries s JOIN sources src ON s.source_id = src.id
@@ -427,6 +423,35 @@ class Database:
             self._conn.execute("ALTER TABLE summaries ADD COLUMN raw_text TEXT")
         except (sqlite3.OperationalError, Exception):
             pass  # Column already exists
+
+        # Migration 3: Fix FTS5 triggers for standalone mode
+        # Old triggers used INSERT...VALUES('delete',...) syntax which only works
+        # for contentless/external content FTS5 tables. summaries_fts is standalone.
+        try:
+            # Check if we need to migrate by testing the trigger SQL
+            row = self._conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='summaries_ad'"
+            ).fetchone()
+            if row and "VALUES('delete'" in (row[0] or ''):
+                # Old trigger format - need to recreate
+                self._conn.execute("DROP TRIGGER IF EXISTS summaries_ad")
+                self._conn.execute("DROP TRIGGER IF EXISTS summaries_au")
+                self._conn.execute("""
+                    CREATE TRIGGER summaries_ad AFTER DELETE ON summaries BEGIN
+                        DELETE FROM summaries_fts WHERE rowid = OLD.rowid;
+                    END
+                """)
+                self._conn.execute("""
+                    CREATE TRIGGER summaries_au AFTER UPDATE ON summaries BEGIN
+                        DELETE FROM summaries_fts WHERE rowid = OLD.rowid;
+                        INSERT INTO summaries_fts(rowid, source_id, title, summary_text, raw_text)
+                        SELECT s.rowid, s.source_id, src.title, s.summary_text, s.raw_text
+                        FROM summaries s JOIN sources src ON s.source_id = src.id
+                        WHERE s.source_id = NEW.source_id;
+                    END
+                """)
+        except (sqlite3.OperationalError, Exception):
+            pass  # Triggers don't exist or migration already done
 
     def close(self):
         """Close database connection."""

@@ -3,6 +3,7 @@
 Extracts entities using LLM, matches against glossary, and queues unknowns.
 """
 
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -45,8 +46,14 @@ def extract_from_source(
 
     matched = 0
     pending = 0
+    skipped = 0
 
     for entity in entities:
+        # LLM may return malformed entities - skip gracefully
+        if not isinstance(entity, dict) or 'mention' not in entity:
+            skipped += 1
+            continue
+
         mention = entity['mention']
         confidence = confidence_to_float(entity.get('confidence', 'medium'))
         suggested = entity.get('suggested_canonical')
@@ -93,9 +100,12 @@ def extract_from_source(
             )
             pending += 1
 
+    if skipped > 0:
+        print(f"⚠️  Skipped {skipped} malformed entities in {source_id}", file=sys.stderr)
+
     return ExtractionResult(
         source_id=source_id,
-        entities_found=len(entities),
+        entities_found=len(entities) - skipped,
         matched=matched,
         pending=pending,
         entities=entities,
