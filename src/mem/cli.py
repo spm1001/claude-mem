@@ -15,7 +15,7 @@ from .adapters.claude_ai import discover_claude_ai, ClaudeAISource
 from .adapters.cloud_sessions import discover_cloud_sessions, CloudSessionSource
 from .adapters.handoffs import discover_handoffs, HandoffSource
 from .adapters.local_md import discover_local_md, LocalMdSource
-from .adapters.beads import discover_beads, BeadsSource
+from .adapters.beads import discover_beads, BeadsSource, parse_jsonl
 from .adapters.arc import discover_arc, ArcSource
 
 
@@ -1939,20 +1939,16 @@ def rebuild_fts(ctx):
             WHERE s.source_id = NEW.source_id;
         END
     """)
+    # Note: summaries_fts is STANDALONE mode, so use regular DELETE (not the special
+    # INSERT ... VALUES('delete', ...) syntax which is only for contentless/external content)
     conn.execute("""
         CREATE TRIGGER summaries_ad AFTER DELETE ON summaries BEGIN
-            INSERT INTO summaries_fts(summaries_fts, rowid, source_id, title, summary_text, raw_text)
-            VALUES('delete', OLD.rowid, OLD.source_id,
-                   (SELECT title FROM sources WHERE id = OLD.source_id),
-                   OLD.summary_text, OLD.raw_text);
+            DELETE FROM summaries_fts WHERE rowid = OLD.rowid;
         END
     """)
     conn.execute("""
         CREATE TRIGGER summaries_au AFTER UPDATE ON summaries BEGIN
-            INSERT INTO summaries_fts(summaries_fts, rowid, source_id, title, summary_text, raw_text)
-            VALUES('delete', OLD.rowid, OLD.source_id,
-                   (SELECT title FROM sources WHERE id = OLD.source_id),
-                   OLD.summary_text, OLD.raw_text);
+            DELETE FROM summaries_fts WHERE rowid = OLD.rowid;
             INSERT INTO summaries_fts(rowid, source_id, title, summary_text, raw_text)
             SELECT s.rowid, s.source_id, src.title, s.summary_text, s.raw_text
             FROM summaries s JOIN sources src ON s.source_id = src.id
@@ -2107,12 +2103,19 @@ def populate_raw_text(ctx, batch_size, limit):
                 raw_text = source.full_text()
 
             elif source_type == 'local_md' and p and p.exists():
-                source = LocalMdSource.from_file(p)
+                # LocalMdSource.from_file needs base_path; use parent as approximation
+                source = LocalMdSource.from_file(p, p.parent)
                 raw_text = source.full_text()
 
             elif source_type == 'beads' and p and p.exists():
-                source = BeadsSource.from_file(p)
-                raw_text = source.full_text()
+                # BeadsSource uses parse_jsonl iterator; find the specific bead by ID
+                # source_id format: "beads:{bead_id}"
+                bead_id = source_id.split(':', 1)[1] if ':' in source_id else source_id
+                workspace_path = str(p.parent.parent)
+                for bead in parse_jsonl(p, workspace_path):
+                    if bead.bead_id == bead_id:
+                        raw_text = bead.full_text()
+                        break
 
             if raw_text:
                 # Cap at 100K chars
