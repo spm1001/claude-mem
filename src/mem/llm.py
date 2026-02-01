@@ -198,6 +198,10 @@ def confidence_to_float(confidence: str) -> float:
     }.get(confidence.lower(), 0.5)
 
 
+# Chunk size for large sessions (chars, not tokens)
+CHUNK_SIZE = 140_000
+CHUNK_OVERLAP = 5_000
+
 # Hybrid extraction prompt - validated against 5 benchmark questions
 HYBRID_EXTRACTION_PROMPT = """Extract a structured digest from this conversation.
 
@@ -235,12 +239,161 @@ Focus on OUTCOMES and STORY, not just entities mentioned.
 Return ONLY valid JSON, no markdown code blocks."""
 
 
+# Chunk extraction prompt - for partial conversations
+CHUNK_EXTRACTION_PROMPT = """Extract key outcomes from this PARTIAL conversation (chunk {chunk_num} of {total_chunks}).
+
+<content>
+{content}
+</content>
+
+Output JSON with:
+- builds: array of things created/modified (what, details)
+- learnings: array of insights (insight, why_it_matters, context)
+- friction: array of problems (problem, resolution)
+- breakthroughs: array of key "aha" moments with why_it_matters
+
+Return ONLY valid JSON, no markdown code blocks."""
+
+
+# Merge prompt - combines chunk results into coherent summary
+MERGE_PROMPT = """You have extraction results from {num_chunks} chunks of the same conversation.
+Merge and deduplicate into a single coherent summary.
+
+<chunk_results>
+{chunk_results}
+</chunk_results>
+
+Create a MERGED summary with:
+1. summary: 2-3 sentences about the whole conversation
+2. arc: the journey (started_with, key_turns array, ended_at)
+3. builds: deduplicated list of things created/modified
+4. learnings: deduplicated insights with why_it_matters
+5. friction: deduplicated problems encountered
+6. patterns: recurring themes, collaboration style, meta-observations
+7. open_threads: unfinished business, deferred work
+
+Deduplicate by meaning, not just exact text. Combine related items.
+Return ONLY valid JSON, no markdown code blocks."""
+
+
+def _split_with_overlap(content: str, chunk_size: int, overlap: int) -> list[str]:
+    """Split content into overlapping chunks.
+
+    Tries to split at paragraph boundaries when possible.
+    """
+    if len(content) <= chunk_size:
+        return [content]
+
+    chunks = []
+    start = 0
+
+    while start < len(content):
+        end = start + chunk_size
+
+        # If not at the end, try to find a paragraph break
+        if end < len(content):
+            # Look for paragraph break in last 10% of chunk
+            search_start = end - (chunk_size // 10)
+            para_break = content.rfind('\n\n', search_start, end)
+            if para_break > search_start:
+                end = para_break + 2  # Include the newlines
+
+        chunks.append(content[start:end])
+
+        # Next chunk starts with overlap
+        start = end - overlap
+        if start >= len(content):
+            break
+
+    return chunks
+
+
+def _extract_chunk(
+    content: str,
+    chunk_num: int,
+    total_chunks: int,
+    model: str,
+    client: "anthropic.Anthropic",
+) -> dict[str, Any]:
+    """Extract from a single chunk."""
+    prompt = CHUNK_EXTRACTION_PROMPT.format(
+        chunk_num=chunk_num,
+        total_chunks=total_chunks,
+        content=content,
+    )
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    response_text = response.content[0].text
+
+    try:
+        start = response_text.find("{")
+        end = response_text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(response_text[start:end])
+    except json.JSONDecodeError:
+        pass
+
+    return {"builds": [], "learnings": [], "friction": [], "breakthroughs": []}
+
+
+def _merge_chunk_results(
+    chunk_results: list[dict[str, Any]],
+    model: str,
+    client: "anthropic.Anthropic",
+) -> dict[str, Any]:
+    """Merge multiple chunk extractions into one coherent result."""
+    # Format chunk results for the merge prompt
+    formatted = json.dumps(chunk_results, indent=2)
+
+    prompt = MERGE_PROMPT.format(
+        num_chunks=len(chunk_results),
+        chunk_results=formatted,
+    )
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    response_text = response.content[0].text
+
+    try:
+        start = response_text.find("{")
+        end = response_text.rfind("}") + 1
+        if start >= 0 and end > start:
+            return json.loads(response_text[start:end])
+    except json.JSONDecodeError:
+        pass
+
+    # Return empty structure if parsing fails
+    return {
+        "summary": None,
+        "arc": None,
+        "builds": [],
+        "learnings": [],
+        "friction": [],
+        "patterns": [],
+        "open_threads": [],
+    }
+
+
 def extract_hybrid(
     content: str,
     model: str = HYBRID_MODEL,
     max_content_chars: int = 140000,
 ) -> dict[str, Any]:
     """Extract structured digest from conversation using hybrid prompt.
+
+    For content exceeding max_content_chars, uses chunking:
+    1. Split into overlapping chunks
+    2. Extract from each chunk
+    3. Merge results with deduplication
 
     Returns dict with keys:
         - summary: str
@@ -255,12 +408,21 @@ def extract_hybrid(
     """
     client = get_client()
 
-    # Truncate if needed (Sonnet context is ~200k tokens, ~150k chars safe)
-    truncated = content[:max_content_chars]
+    # Use chunking for large content
     if len(content) > max_content_chars:
-        truncated += f"\n\n[... truncated, {len(content) - max_content_chars} chars omitted ...]"
+        chunks = _split_with_overlap(content, CHUNK_SIZE, CHUNK_OVERLAP)
 
-    prompt = HYBRID_EXTRACTION_PROMPT.format(content=truncated)
+        # Extract from each chunk
+        chunk_results = []
+        for i, chunk in enumerate(chunks):
+            result = _extract_chunk(chunk, i + 1, len(chunks), model, client)
+            chunk_results.append(result)
+
+        # Merge chunk results
+        return _merge_chunk_results(chunk_results, model, client)
+
+    # Single extraction for content that fits
+    prompt = HYBRID_EXTRACTION_PROMPT.format(content=content)
 
     response = client.messages.create(
         model=model,

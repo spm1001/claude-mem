@@ -50,3 +50,6 @@ spec.md
 # Project tracking (personal)
 .beads/
 .claude/
+
+# Experiments (spike artifacts)
+experiments/

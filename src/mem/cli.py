@@ -17,6 +17,7 @@ from .adapters.handoffs import discover_handoffs, HandoffSource
 from .adapters.local_md import discover_local_md, LocalMdSource
 from .adapters.beads import discover_beads, BeadsSource, parse_jsonl
 from .adapters.arc import discover_arc, ArcSource
+from .adapters.knowledge import discover_knowledge, KnowledgeSource
 
 
 @click.group()
@@ -32,7 +33,7 @@ def main(ctx):
 @main.command()
 @click.option('--dry-run', is_flag=True, help="Show what would be indexed without storing")
 @click.option('--source', 'source_filter',
-              type=click.Choice(['claude_code', 'claude_ai', 'handoffs', 'cloud_sessions', 'local_md', 'beads', 'arc']),
+              type=click.Choice(['claude_code', 'claude_ai', 'handoffs', 'cloud_sessions', 'local_md', 'beads', 'arc', 'knowledge']),
               help="Only scan this source type")
 @click.pass_context
 def scan(ctx, dry_run, source_filter):
@@ -47,6 +48,7 @@ def scan(ctx, dry_run, source_filter):
     scan_local_md = source_filter is None or source_filter == 'local_md'
     scan_beads = source_filter is None or source_filter == 'beads'
     scan_arc = source_filter is None or source_filter == 'arc'
+    scan_knowledge = source_filter is None or source_filter == 'knowledge'
 
     if not scan_claude_code:
         click.echo(f"Skipping Claude Code conversations...")
@@ -389,11 +391,66 @@ def scan(ctx, dry_run, source_filter):
                     arc_new += 1
                     click.echo(f"  + {source.title[:70]}...")
 
+        # Scan knowledge articles
+        knowledge_new = 0
+        knowledge_updated = 0
+        knowledge_skipped = 0
+
+        if scan_knowledge:
+            click.echo(f"\nScanning knowledge articles...")
+            for source in discover_knowledge(config):
+                # Check if file has changed since last scan (mtime-based)
+                existing = db.get_source(source.source_id)
+                mtime_str = str(source.mtime)
+
+                if existing and existing.get('content_hash') == mtime_str:
+                    # File unchanged, skip processing
+                    knowledge_skipped += 1
+                    continue
+
+                if dry_run:
+                    status = "exists" if existing else "new"
+                    click.echo(f"  [{status}] {source.source_id}: {source.title[:60]}...")
+                    if not existing:
+                        knowledge_new += 1
+                    continue
+
+                # Store source metadata with mtime for change detection
+                db.upsert_source(
+                    source_id=source.source_id,
+                    source_type='knowledge',
+                    title=source.title,
+                    path=str(source.path),
+                    created_at=source.date,
+                    updated_at=source.date,
+                    project_path=source.project_path,
+                    content_hash=mtime_str,
+                )
+
+                # Index full content (knowledge is already distilled)
+                full_text = source.full_text()
+                db.upsert_summary(
+                    source_id=source.source_id,
+                    summary_text=full_text,
+                    has_presummary=True,
+                    raw_text=full_text,
+                )
+                db.mark_processed(source.source_id)
+
+                if existing:
+                    knowledge_updated += 1
+                else:
+                    knowledge_new += 1
+                    if knowledge_new <= 10:
+                        click.echo(f"  + {source.title[:70]}...")
+                    elif knowledge_new == 11:
+                        click.echo(f"  ... (limiting output)")
+
         if dry_run:
-            click.echo(f"\nDry run: {new_count} Claude Code, {ai_new} Claude.ai, {handoff_new} handoffs, {cloud_new} cloud, {local_md_new} local_md, {beads_new} beads, {arc_new} arc new")
+            click.echo(f"\nDry run: {new_count} Claude Code, {ai_new} Claude.ai, {handoff_new} handoffs, {cloud_new} cloud, {local_md_new} local_md, {beads_new} beads, {arc_new} arc, {knowledge_new} knowledge new")
         else:
-            total_new = new_count + ai_new + handoff_new + cloud_new + local_md_new + beads_new + arc_new
-            total_updated = updated_count + ai_updated + handoff_updated + cloud_updated + local_md_updated + beads_updated + arc_updated
+            total_new = new_count + ai_new + handoff_new + cloud_new + local_md_new + beads_new + arc_new + knowledge_new
+            total_updated = updated_count + ai_updated + handoff_updated + cloud_updated + local_md_updated + beads_updated + arc_updated + knowledge_updated
             click.echo(f"\nIndexed: {total_new} new, {total_updated} updated")
             click.echo(f"  Claude Code: {new_count} new, {updated_count} updated")
             click.echo(f"  Claude.ai: {ai_new} new, {ai_updated} updated")
@@ -402,6 +459,7 @@ def scan(ctx, dry_run, source_filter):
             click.echo(f"  Local markdown: {local_md_new} new, {local_md_updated} updated, {local_md_skipped} unchanged")
             click.echo(f"  Beads: {beads_new} new, {beads_updated} updated, {beads_skipped} unchanged")
             click.echo(f"  Arc: {arc_new} new, {arc_updated} updated, {arc_skipped} unchanged")
+            click.echo(f"  Knowledge: {knowledge_new} new, {knowledge_updated} updated, {knowledge_skipped} unchanged")
 
 
 def _extract_compacted_summary(content: str) -> str | None:

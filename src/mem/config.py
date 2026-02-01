@@ -53,6 +53,7 @@ DEFAULT_CONFIG = {
             'pattern': '**/*.json',
         },
         'local_md': {},
+        'knowledge': {},  # Curated knowledge articles (already distilled, skip LLM)
         'google': {
             'enabled': False,
             'credentials_path': '~/.claude/memory/google_credentials.json',

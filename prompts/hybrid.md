@@ -139,6 +139,6 @@ def extract_hybrid(content: str) -> dict:
 ## Next Steps
 
 - [ ] Haiku downgrade test — verify quality with cheaper model
-- [ ] Implement chunking in pipeline
+- [x] Implement chunking in pipeline (done: llm.py now splits large sessions)
 - [ ] Aggregate across full corpus
 - [ ] Verify Q4 and Q5 benchmark questions
