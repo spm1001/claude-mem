@@ -651,7 +651,7 @@ def extract_hybrid(
     content: str,
     messages: list[MessageData] | None = None,
     model: str = HYBRID_MODEL,
-    max_content_chars: int = 140000,
+    max_content_chars: int = 80000,
     chunk_size: int | None = None,
     chunk_overlap: int | None = None,
     semantic_min: int | None = None,

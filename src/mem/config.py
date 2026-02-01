@@ -64,8 +64,9 @@ DEFAULT_CONFIG = {
         'summary_target_words': 200,
         'max_context_tokens': 100000,
         'skip_tool_results': True,
-        'chunk_size': 140000,       # chars, for fixed-size chunking
-        'chunk_overlap': 5000,      # overlap between chunks (fixed-size)
+        'max_content_chars': 80000,  # threshold for triggering chunking
+        'chunk_size': 140000,        # chars, for fixed-size chunking (fallback)
+        'chunk_overlap': 5000,       # overlap between chunks (fixed-size)
         # Semantic chunking settings (topic-boundary-aware)
         'semantic_chunk_min': 15000,    # min chunk size - merge smaller with neighbors
         'semantic_chunk_max': 80000,    # max chunk size - split larger at paragraph breaks
