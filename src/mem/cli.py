@@ -5,6 +5,7 @@ import os
 os.environ.setdefault('RUST_LOG', 'error,sqlite3Parser=off')
 
 import json
+from pathlib import Path
 import click
 
 from .config import load_config, get_memory_dir
@@ -563,7 +564,118 @@ def status(ctx):
         click.echo(f"  Resolved: {stats.get('resolved_entities', 0)}")
         click.echo(f"  Pending: {stats.get('pending_entities', 0)}")
 
+    # Check for stale sources
+    already_stale = stats['by_status'].get('stale', 0)
+    newly_stale = 0
+    with db:
+        # Only check sources not already marked stale
+        sources_with_paths = db.get_sources_with_paths(include_stale=False)
+    for source in sources_with_paths:
+        # Skip virtual paths (claude_ai stores claude_ai:uuid)
+        if source['source_type'] == 'claude_ai':
+            continue
+        if source['path'] and not Path(source['path']).exists():
+            newly_stale += 1
 
+    if already_stale or newly_stale:
+        click.echo(f"\nStale sources:")
+        if already_stale:
+            click.echo(f"  Marked stale: {already_stale}")
+        if newly_stale:
+            click.echo(click.style(
+                f"  Paths missing: {newly_stale} (run 'mem prune --dry-run' to see details)",
+                fg='yellow'
+            ))
+
+
+@main.command()
+@click.option('--dry-run', is_flag=True, help='Show what would be marked stale')
+@click.option('--type', 'source_type', help='Only check specific source type')
+@click.option('--yes', '-y', is_flag=True, help='Skip confirmation prompt')
+@click.option('--delete', 'hard_delete', is_flag=True, help='Delete sources instead of marking stale (loses extractions)')
+def prune(dry_run, source_type, yes, hard_delete):
+    """Mark sources as stale when their paths no longer exist.
+
+    By default, marks sources as 'stale' but preserves summaries and
+    extractions so they remain searchable.
+
+    Use --delete to permanently remove sources and all related data.
+
+    Examples:
+        mem prune --dry-run              # Preview what would be marked stale
+        mem prune --dry-run --type local_md  # Only check local_md
+        mem prune --yes                  # Mark stale without confirmation
+        mem prune --delete --yes         # Hard delete (loses extractions)
+    """
+    db = get_database()
+    with db:
+        sources = db.get_sources_with_paths(source_type)
+
+    if not sources:
+        click.echo("No sources with filesystem paths found.")
+        return
+
+    click.echo(f"Checking {len(sources)} sources with filesystem paths...")
+
+    # Group stale sources by type
+    stale_by_type: dict[str, list[dict]] = {}
+    for source in sources:
+        # Skip virtual paths (claude_ai stores claude_ai:uuid)
+        if source['source_type'] == 'claude_ai':
+            continue
+
+        if source['path'] and not Path(source['path']).exists():
+            stype = source['source_type']
+            if stype not in stale_by_type:
+                stale_by_type[stype] = []
+            stale_by_type[stype].append(source)
+
+    if not stale_by_type:
+        click.echo(click.style("✓ All source paths are valid.", fg='green'))
+        return
+
+    # Report findings
+    total_stale = sum(len(v) for v in stale_by_type.values())
+    click.echo(f"\nStale sources (path no longer exists):")
+
+    for stype, sources_list in sorted(stale_by_type.items()):
+        click.echo(f"  {stype}: {len(sources_list)}")
+        # Show first few examples
+        for source in sources_list[:3]:
+            title = source['title'][:50] if source['title'] else source['id']
+            click.echo(f"    - {title}")
+        if len(sources_list) > 3:
+            click.echo(f"    ... and {len(sources_list) - 3} more")
+
+    click.echo(f"\nTotal: {total_stale} stale sources")
+
+    action = "delete" if hard_delete else "mark as stale"
+    if dry_run:
+        click.echo(f"\nRun without --dry-run to {action}, or add --yes to skip confirmation.")
+        return
+
+    # Confirm action
+    if not yes:
+        msg = f"\n{'Delete' if hard_delete else 'Mark'} {total_stale} stale sources?"
+        if hard_delete:
+            msg += " (This will also delete summaries and extractions!)"
+        if not click.confirm(msg):
+            click.echo("Aborted.")
+            return
+
+    # Process stale sources
+    processed = 0
+    with db:
+        all_stale_ids = [s['id'] for sources_list in stale_by_type.values() for s in sources_list]
+        if hard_delete:
+            for source_id in all_stale_ids:
+                if db.delete_source(source_id):
+                    processed += 1
+        else:
+            processed = db.mark_stale_batch(all_stale_ids)
+
+    verb = "Deleted" if hard_delete else "Marked stale"
+    click.echo(click.style(f"\n✓ {verb} {processed} sources.", fg='green'))
 
 
 @main.command('list')

@@ -332,6 +332,79 @@ class Database:
         cursor = conn.execute("SELECT 1 FROM sources WHERE id = ?", (source_id,))
         return cursor.fetchone() is not None
 
+    def delete_source(self, source_id: str) -> bool:
+        """Delete a source and all related data.
+
+        Cascades to: summaries, extractions, source_entities,
+        pending_entities, file_mentions.
+
+        Returns True if source was found and deleted.
+        """
+        conn = self.connect()
+        with conn:
+            # Delete related rows first (no CASCADE in schema)
+            conn.execute("DELETE FROM file_mentions WHERE source_id = ?", (source_id,))
+            conn.execute("DELETE FROM pending_entities WHERE source_id = ?", (source_id,))
+            conn.execute("DELETE FROM source_entities WHERE source_id = ?", (source_id,))
+            conn.execute("DELETE FROM extractions WHERE source_id = ?", (source_id,))
+            # This triggers FTS cleanup via summaries_ad trigger
+            conn.execute("DELETE FROM summaries WHERE source_id = ?", (source_id,))
+            # Delete source
+            cursor = conn.execute("DELETE FROM sources WHERE id = ?", (source_id,))
+            return cursor.rowcount > 0
+
+    def mark_stale(self, source_id: str) -> bool:
+        """Mark a source as stale (path no longer exists).
+
+        Preserves summaries and extractions for continued search value.
+        Returns True if source was found and marked.
+        """
+        conn = self.connect()
+        cursor = conn.execute(
+            "UPDATE sources SET status = 'stale' WHERE id = ?",
+            (source_id,)
+        )
+        conn.commit()
+        return cursor.rowcount > 0
+
+    def mark_stale_batch(self, source_ids: list[str]) -> int:
+        """Mark multiple sources as stale. Returns count marked."""
+        conn = self.connect()
+        cursor = conn.executemany(
+            "UPDATE sources SET status = 'stale' WHERE id = ?",
+            [(sid,) for sid in source_ids]
+        )
+        conn.commit()
+        return cursor.rowcount
+
+    def get_sources_with_paths(
+        self,
+        source_type: str | None = None,
+        include_stale: bool = False
+    ) -> list[dict]:
+        """Get all sources that have filesystem paths.
+
+        Args:
+            source_type: Optional filter by source type
+            include_stale: If False (default), exclude sources already marked stale
+
+        Returns:
+            List of source dicts with id, source_type, path, title
+        """
+        conn = self.connect()
+        query = "SELECT id, source_type, path, title FROM sources WHERE path IS NOT NULL"
+        params = []
+
+        if not include_stale:
+            query += " AND (status IS NULL OR status != 'stale')"
+
+        if source_type:
+            query += " AND source_type = ?"
+            params.append(source_type)
+
+        cursor = conn.execute(query, params)
+        return [dict(row) for row in cursor.fetchall()]
+
     # Summary operations
 
     def upsert_summary(
