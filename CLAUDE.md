@@ -15,6 +15,8 @@ uv run mem backfill --limit 100    # Batch extract (API calls)
 uv run mem search "query"          # FTS5 search
 uv run mem drill <source_id>       # Load full content
 uv run mem status                  # Index statistics
+uv run mem prune --dry-run         # Find sources with invalid paths
+uv run mem prune --yes             # Mark stale (preserves extractions)
 ```
 
 ## Architecture
@@ -34,6 +36,8 @@ See `ADAPTER_AUDIT.md` for the adapter protocol plan.
 **Backfill resilience:** Each extraction commits immediately, so interrupted backfill is resumable (just rerun). But no progress counter — use `grep -c "✓" logfile` to monitor.
 
 **`--limit 0` gotcha:** In backfill/populate commands, `--limit 0` means SQL `LIMIT 0` (returns nothing), not "unlimited". Use a large number like `--limit 10000` instead.
+
+**Stale sources:** Sources with invalid paths are marked `status='stale'` (not deleted) to preserve extraction value. Use `mem prune --delete` for hard deletion, but extractions will be lost. Stale sources still appear in search results — filtering coming later.
 
 ## Code Review
 
