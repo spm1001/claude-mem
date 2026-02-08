@@ -27,13 +27,26 @@ uv run mem prune --yes             # Mark stale (preserves extractions)
 - `src/mem/extraction.py` — Entity extraction orchestration
 - `src/mem/adapters/*.py` — Source format parsers (8 types)
 
+## LLM Backend
+
+All LLM calls go through `_call_claude()` in `llm.py`, which invokes `claude -p` (pipe mode). This bills against the Max subscription, not API credits. Model is `claude-opus-4-6` for everything.
+
+**Fork bomb prevention:** `_call_claude()` sets `MEM_SUBAGENT=1` in the subprocess environment. Session-start hooks must check this and exit early — otherwise `claude -p` triggers hooks that spawn more `claude -p` processes recursively. This guard is critical; do not remove it.
+
+**Flags used:** `--allowedTools ""` disables all tools (pure text generation), `--no-session-persistence` avoids phantom sessions, `--output-format json` for parsing the `result` field.
+
+**Model migration (Feb 2026):** Database contains three `model_used` values:
+- `claude-sonnet-4-20250514` — pre-migration extractions (API-based)
+- `claude-opus-4-6` — post-migration (CLI-based, Max subscription)
+- `skipped:content_too_short` — stub records for sources with <100 chars content
+
 ## Known Issues / Tech Debt
 
 See `ADAPTER_AUDIT.md` for the adapter protocol plan.
 
 **CLI monolith:** The scan command has ~450 lines of near-identical loops for 8 source types. Refactor to registry pattern is tracked in arc.
 
-**Backfill resilience:** Each extraction commits immediately, so interrupted backfill is resumable (just rerun). But no progress counter — use `grep -c "✓" logfile` to monitor.
+**Backfill resilience:** Each extraction commits immediately, so interrupted backfill is resumable (just rerun). Use `nohup` for large batches — background tasks timeout. No progress counter — use `grep -c "✓" logfile` to monitor.
 
 **`--limit 0` gotcha:** In backfill/populate commands, `--limit 0` means SQL `LIMIT 0` (returns nothing), not "unlimited". Use a large number like `--limit 10000` instead.
 

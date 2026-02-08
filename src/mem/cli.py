@@ -1763,17 +1763,20 @@ def process(ctx, path, no_extract, no_hybrid, quiet):
 @main.command()
 @click.option('--limit', '-n', default=10, help='Maximum sources to process')
 @click.option('--source-type', type=str, help='Only process this source type')
+@click.option('--skip-short', is_flag=True, help='Mark sources with <100 chars as skipped instead of processing')
 @click.option('--dry-run', is_flag=True, help='Show what would be processed')
 @click.pass_context
-def backfill(ctx, limit, source_type, dry_run):
+def backfill(ctx, limit, source_type, skip_short, dry_run):
     """Backfill hybrid extractions for existing sources.
 
     Finds sources without extractions and runs hybrid extraction on them.
     Uses claude -p (Opus 4.6 via Max subscription) for all extractions.
     Use --limit to control batch size (default 10).
+    Use --skip-short to mark sources with insufficient content as skipped.
 
     Example:
         mem backfill --limit 50 --source-type claude_code
+        mem backfill --limit 500 --skip-short
     """
     from .llm import extract_hybrid, MODEL
     from .adapters.claude_code import ClaudeCodeSource
@@ -1839,11 +1842,19 @@ def backfill(ctx, limit, source_type, dry_run):
                     if summary_row:
                         full_text = summary_row['summary_text']
                     else:
-                        click.echo(f"  Skipping: no content available")
+                        if skip_short:
+                            db.upsert_extraction(source_id=source_id, model_used='skipped:no_content')
+                            click.echo(f"  Marked skipped: no content")
+                        else:
+                            click.echo(f"  Skipping: no content available")
                         continue
 
                 if not full_text or len(full_text) < 100:
-                    click.echo(f"  Skipping: content too short")
+                    if skip_short:
+                        db.upsert_extraction(source_id=source_id, model_used='skipped:content_too_short')
+                        click.echo(f"  Marked skipped: content too short")
+                    else:
+                        click.echo(f"  Skipping: content too short")
                     continue
 
                 # Run hybrid extraction (uses semantic chunking if messages available)
