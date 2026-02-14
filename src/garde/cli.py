@@ -22,7 +22,7 @@ from .adapters.knowledge import discover_knowledge, KnowledgeSource
 
 
 @click.group()
-@click.version_option()
+@click.version_option(package_name="garde-manger")
 @click.pass_context
 def main(ctx):
     """Conversation Memory System - persistent, searchable memory across Claude sessions."""
