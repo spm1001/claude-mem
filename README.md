@@ -20,16 +20,7 @@ This tool gives Claude (and you) access to that history.
 
 ## The Kitchen
 
-garde-manger is part of a tool suite built around Claude Code, following a professional kitchen [brigade](https://en.wikipedia.org/wiki/Brigade_de_cuisine) metaphor:
-
-| Tool | Brigade role | What it does |
-|------|-------------|--------------|
-| [**mise-en-space**](https://github.com/spm1001/mise-en-space) | Mise en place | Content from Google Workspace and the web, prepped and ready |
-| [**passe**](https://github.com/spm1001/passe) | The pass | Fast browser automation — the inspection window between kitchen and floor |
-| [**garde-manger**](https://github.com/spm1001/garde-manger) | Cold station | Persistent, searchable memory across Claude sessions |
-| [**trousse**](https://github.com/spm1001/trousse) | Knife roll | Skills and behavioural extensions for Claude Code |
-
-Together they address the session-to-session continuity problem from different angles: [bon](https://github.com/spm1001/bon) tracks *what needs doing*, handoffs pass *context between sessions*, and garde-manger provides *searchable ancestral memory*.
+Garde-manger is part of [Batterie de Savoir](https://spm1001.github.io/batterie-de-savoir/) — a suite of tools for AI-assisted knowledge work, each named for a station in a professional kitchen brigade. Together they address the session-to-session continuity problem from different angles: [bon](https://github.com/spm1001/bon) tracks *what needs doing*, handoffs pass *context between sessions*, and garde-manger provides *searchable ancestral memory*. See the [full brigade and design principles](https://spm1001.github.io/batterie-de-savoir/) for how the tools fit together.
 
 ## What It Does
 
