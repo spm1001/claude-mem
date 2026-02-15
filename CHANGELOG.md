@@ -14,7 +14,7 @@ Initial public release.
 
 ### Features
 
-- **Multi-source indexing** — Adapters for Claude Code, Claude.ai exports, handoffs, local markdown, beads, and cloud sessions
+- **Multi-source indexing** — Adapters for Claude Code, Claude.ai exports, handoffs, local markdown, bon, and cloud sessions
 - **FTS5 search** — Full-text search over summaries with SQLite FTS5
 - **LLM extraction** — Summarization and entity extraction using Anthropic API
 - **Glossary system** — Map aliases to canonical terms for consistent search
