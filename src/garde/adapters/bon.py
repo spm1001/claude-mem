@@ -1,12 +1,12 @@
-"""Arc issue tracker adapter.
+"""Bon work tracker adapter.
 
-Indexes arc items from .arc/items.jsonl files across projects.
+Indexes bon items from .bon/items.jsonl files across projects.
 
-Arc is a lightweight work tracker using GTD vocabulary:
+Bon is a lightweight work tracker using GTD vocabulary:
 - Outcomes: desired results (similar to epics)
 - Actions: next actions to achieve outcomes
 
-Discovery uses glob patterns since arc doesn't have a registry.
+Discovery uses glob patterns since bon doesn't have a registry.
 """
 
 from pathlib import Path
@@ -17,10 +17,10 @@ from typing import Iterator
 
 
 @dataclass
-class ArcSource:
-    """An item (outcome or action) from the arc tracker."""
+class BonSource:
+    """An item (outcome or action) from the bon tracker."""
     path: Path                    # Path to items.jsonl
-    item_id: str                  # e.g., "arc-gasoPe"
+    item_id: str                  # e.g., "bon-gasoPe"
     title: str
     item_type: str                # outcome or action
     brief_why: str
@@ -30,15 +30,15 @@ class ArcSource:
     parent_id: str | None         # Parent outcome for actions
     created_at: datetime
     done_at: datetime | None
-    project_path: str             # Derived from .arc location
+    project_path: str             # Derived from .bon location
 
     @property
     def source_id(self) -> str:
-        return f"arc:{self.item_id}"
+        return f"bon:{self.item_id}"
 
     @property
     def has_presummary(self) -> bool:
-        # Arc items have distilled content in brief fields
+        # Bon items have distilled content in brief fields
         return True
 
     def full_text(self) -> str:
@@ -63,7 +63,7 @@ class ArcSource:
 
 
 def parse_datetime(dt_str: str | None) -> datetime | None:
-    """Parse ISO 8601 datetime string from arc."""
+    """Parse ISO 8601 datetime string from bon."""
     if not dt_str:
         return None
     try:
@@ -73,8 +73,8 @@ def parse_datetime(dt_str: str | None) -> datetime | None:
         return None
 
 
-def parse_jsonl(path: Path, project_path: str) -> Iterator[ArcSource]:
-    """Parse items.jsonl and yield ArcSource objects."""
+def parse_jsonl(path: Path, project_path: str) -> Iterator[BonSource]:
+    """Parse items.jsonl and yield BonSource objects."""
     if not path.exists():
         return
 
@@ -97,7 +97,7 @@ def parse_jsonl(path: Path, project_path: str) -> Iterator[ArcSource]:
                 if not created_at:
                     created_at = datetime.now()
 
-                yield ArcSource(
+                yield BonSource(
                     path=path,
                     item_id=data.get('id', f'unknown-{line_num}'),
                     title=data.get('title', ''),
@@ -114,18 +114,18 @@ def parse_jsonl(path: Path, project_path: str) -> Iterator[ArcSource]:
             except json.JSONDecodeError as e:
                 print(f"Failed to parse line {line_num} in {path}: {e}")
             except Exception as e:
-                print(f"Error processing arc item at line {line_num} in {path}: {e}")
+                print(f"Error processing bon item at line {line_num} in {path}: {e}")
 
 
-def discover_arc(config: dict) -> Iterator[ArcSource]:
-    """Discover all arc items from configured paths.
+def discover_bon(config: dict) -> Iterator[BonSource]:
+    """Discover all bon items from configured paths.
 
-    Default paths: ~/Repos/*/.arc/items.jsonl
+    Default paths: ~/Repos/*/.bon/items.jsonl
     """
-    source_config = config.get('sources', {}).get('arc', {})
+    source_config = config.get('sources', {}).get('bon', {})
 
     paths = source_config.get('paths', [
-        '~/Repos/*/.arc/items.jsonl',
+        '~/Repos/*/.bon/items.jsonl',
     ])
 
     discovered = set()
@@ -140,7 +140,7 @@ def discover_arc(config: dict) -> Iterator[ArcSource]:
                 for jsonl_path in base_path.glob(glob_pattern.lstrip('/')):
                     if str(jsonl_path) not in discovered:
                         discovered.add(str(jsonl_path))
-                        # Project path is parent of .arc
+                        # Project path is parent of .bon
                         project_path = str(jsonl_path.parent.parent)
                         yield from parse_jsonl(jsonl_path, project_path)
         else:

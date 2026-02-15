@@ -218,28 +218,13 @@ Sessions with just "Warmup" or under 100 characters are excluded from backfill.
 
 ## Filing Issues
 
-If you encounter a problem not covered here, file a bead:
+If you encounter a problem not covered here, file a bon item:
 
 ```bash
-bd create "memory: [brief description]" \
-  --type bug \
-  --description "[Detailed problem]" \
-  --design "$(cat <<'EOF'
-## Steps to Reproduce
-1. [step]
-2. [step]
-
-## Expected
-[what should happen]
-
-## Actual
-[what happened]
-
-## Diagnostics Run
-- garde status: [output]
-- other checks: [output]
-EOF
-)"
+bon new "memory: [brief description]" \
+  --why "[Detailed problem]" \
+  --what "Debug and fix the issue" \
+  --done "[Expected behavior restored]"
 ```
 
 See SKILL.md "Feedback: Filing Issues" section for full templates.

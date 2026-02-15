@@ -24,14 +24,14 @@ garde-manger is part of a tool suite built around Claude Code, following a profe
 | [**garde-manger**](https://github.com/spm1001/garde-manger) | Cold station | Persistent, searchable memory across Claude sessions |
 | [**trousse**](https://github.com/spm1001/trousse) | Knife roll | Skills and behavioural extensions for Claude Code |
 
-Together they address the session-to-session continuity problem from different angles: [arc](https://github.com/spm1001/arc) tracks *what needs doing*, handoffs pass *context between sessions*, and garde-manger provides *searchable ancestral memory*.
+Together they address the session-to-session continuity problem from different angles: [bon](https://github.com/spm1001/bon) tracks *what needs doing*, handoffs pass *context between sessions*, and garde-manger provides *searchable ancestral memory*.
 
 ## What It Does
 
 1. **Search across past conversations** — Find that discussion about authentication patterns
 2. **Consistent terminology** — Your glossary maps aliases to canonical terms
 3. **Token efficiency** — Search summaries first, drill into full content only when needed
-4. **Cross-platform** — Works with Claude Code, Claude.ai, handoffs, beads, arc, cloud sessions, and local markdown
+4. **Cross-platform** — Works with Claude Code, Claude.ai, handoffs, bon, cloud sessions, and local markdown
 
 ## Quick Start
 
@@ -102,7 +102,6 @@ Glossary: 85 entities
 
 Database:
   Sources: 6247
-    beads: 1526
     claude_ai: 102
     claude_code: 2000
     handoff: 213
@@ -161,7 +160,7 @@ sources:
 | `claude_ai` | Claude.ai exports | Yes (via [claude-data-sync](https://github.com/anthropics/claude-data-sync)) |
 | `handoff` | Session handoff files | Yes (`~/.claude/handoffs/`) |
 | `local_md` | Local markdown files | Configure paths in config.yaml |
-| `arc` | Arc work tracker | Yes (from `.arc/` directories) |
+| `bon` | Bon work tracker | Yes (from `.bon/` directories) |
 
 ## Glossary
 

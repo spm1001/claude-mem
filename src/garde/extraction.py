@@ -116,7 +116,7 @@ def get_source_content(source_id: str, db: Database, config: dict = None) -> tup
     """Load full text content for a source from database.
 
     Retrieves raw_text stored during indexing, which works for ALL source types
-    (claude_code, claude_ai, cloud_session, handoff, local_md, beads, arc, knowledge).
+    (claude_code, claude_ai, cloud_session, handoff, local_md, bon, knowledge).
 
     Args:
         source_id: The source identifier

@@ -48,7 +48,7 @@ All LLM calls go through `_call_claude()` in `llm.py`, which invokes `claude -p`
 
 See `ADAPTER_AUDIT.md` for the adapter protocol plan.
 
-**CLI monolith:** The scan command has ~450 lines of near-identical loops for 8 source types. Refactor to registry pattern is tracked in arc.
+**CLI monolith:** The scan command has ~450 lines of near-identical loops for 8 source types. Refactor to registry pattern is tracked in bon.
 
 **Backfill resilience:** Each extraction commits immediately, so interrupted backfill is resumable (just rerun). Use `nohup` for large batches — background tasks timeout. No progress counter — use `grep -c "✓" logfile` to monitor.
 

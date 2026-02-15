@@ -119,77 +119,34 @@ When encountering problems with memory search or quality, file a structured bead
 
 **Search issues:**
 ```bash
-bd create "memory: search not finding [topic]" \
-  --type bug \
-  --description "Query '[query]' should find [expected] but returns [actual]" \
-  --design "$(cat <<'EOF'
-## Query Details
-- Query: [exact query string]
-- Filters: [--type, --project if used]
-- Source ID (if known): [where content exists]
-
-## Expected
-[What should be found]
-
-## Actual
-[What was returned]
-EOF
-)"
+bon new "memory: search not finding [topic]" \
+  --why "Query '[query]' should find [expected] but returns [actual]" \
+  --what "Investigate FTS indexing for the missing content" \
+  --done "Query returns expected results"
 ```
 
 **Extraction quality:**
 ```bash
-bd create "memory: extraction missing [type]" \
-  --type bug \
-  --description "Source [id] missing [learnings/builds/arc]" \
-  --design "$(cat <<'EOF'
-## Source
-- ID: [source_id]
-- Topic: [what the session was about]
-
-## Missing
-[What should have been extracted]
-
-## Why It Matters
-[Impact on search/discovery]
-EOF
-)"
+bon new "memory: extraction missing [type]" \
+  --why "Source [id] missing [learnings/builds/arc]" \
+  --what "Check extraction pipeline for source [id]" \
+  --done "Missing extractions are captured"
 ```
 
 **CLI bugs:**
 ```bash
-bd create "memory: [brief error]" \
-  --type bug \
-  --description "[Error message]" \
-  --design "$(cat <<'EOF'
-## Command
-[Exact command run]
-
-## Expected
-[What should happen]
-
-## Actual
-[Error or unexpected behavior]
-EOF
-)"
+bon new "memory: [brief error]" \
+  --why "[Error message] when running [command]" \
+  --what "Debug and fix the CLI error" \
+  --done "Command runs without error"
 ```
 
 **Skill discovery:**
 ```bash
-bd create "memory: skill not triggering on '[phrase]'" \
-  --type enhancement \
-  --description "Expected memory skill on '[phrase]' but didn't trigger" \
-  --design "$(cat <<'EOF'
-## Trigger Phrase
-[What user said]
-
-## Why It Should Trigger
-[Reasoning]
-
-## Suggested Addition
-[Phrase to add to description]
-EOF
-)"
+bon new "memory: skill not triggering on '[phrase]'" \
+  --why "Expected memory skill on '[phrase]' but didn't trigger" \
+  --what "Add trigger phrase to skill description" \
+  --done "Skill triggers on '[phrase]'"
 ```
 
 ---
@@ -202,7 +159,7 @@ EOF
 | Searching without type filter | Noisy results | Add `--type` for precision |
 | Ignoring extraction summary | Missing the "unfolding label" | Check arc/learnings first |
 | Filing vague bug reports | Hard to reproduce | Use structured templates above |
-| Searching after handoff loaded | Already have context | Check handoff/beads first |
+| Searching after handoff loaded | Already have context | Check handoff/bon first |
 
 ---
 

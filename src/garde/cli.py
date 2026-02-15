@@ -16,8 +16,7 @@ from .adapters.claude_ai import discover_claude_ai, ClaudeAISource
 from .adapters.cloud_sessions import discover_cloud_sessions, CloudSessionSource
 from .adapters.handoffs import discover_handoffs, HandoffSource
 from .adapters.local_md import discover_local_md, LocalMdSource
-from .adapters.beads import discover_beads, BeadsSource, parse_jsonl
-from .adapters.arc import discover_arc, ArcSource
+from .adapters.bon import discover_bon, BonSource
 from .adapters.knowledge import discover_knowledge, KnowledgeSource
 
 
@@ -34,7 +33,7 @@ def main(ctx):
 @main.command()
 @click.option('--dry-run', is_flag=True, help="Show what would be indexed without storing")
 @click.option('--source', 'source_filter',
-              type=click.Choice(['claude_code', 'claude_ai', 'handoffs', 'cloud_sessions', 'local_md', 'beads', 'arc', 'knowledge']),
+              type=click.Choice(['claude_code', 'claude_ai', 'handoffs', 'cloud_sessions', 'local_md', 'bon', 'knowledge']),
               help="Only scan this source type")
 @click.pass_context
 def scan(ctx, dry_run, source_filter):
@@ -47,8 +46,7 @@ def scan(ctx, dry_run, source_filter):
     scan_handoffs = source_filter is None or source_filter == 'handoffs'
     scan_cloud = source_filter is None or source_filter == 'cloud_sessions'
     scan_local_md = source_filter is None or source_filter == 'local_md'
-    scan_beads = source_filter is None or source_filter == 'beads'
-    scan_arc = source_filter is None or source_filter == 'arc'
+    scan_bon = source_filter is None or source_filter == 'bon'
     scan_knowledge = source_filter is None or source_filter == 'knowledge'
 
     if not scan_claude_code:
@@ -287,87 +285,33 @@ def scan(ctx, dry_run, source_filter):
                     elif local_md_new == 11:
                         click.echo(f"  ... (limiting output)")
 
-        # Scan beads (bd issue tracker)
-        beads_new = 0
-        beads_updated = 0
-        beads_skipped = 0
+        # Scan bon (lightweight work tracker)
+        bon_new = 0
+        bon_updated = 0
+        bon_skipped = 0
 
-        if scan_beads:
-            click.echo(f"\nScanning beads...")
-            for source in discover_beads(config):
-                # Check if bead has changed since last scan (updated_at-based)
-                existing = db.get_source(source.source_id)
-                updated_at_str = source.updated_at.isoformat() if source.updated_at else ''
-
-                if existing and existing.get('content_hash') == updated_at_str:
-                    # Bead unchanged, skip processing
-                    beads_skipped += 1
-                    continue
-
-                if dry_run:
-                    status = "exists" if existing else "new"
-                    click.echo(f"  [{status}] {source.source_id}: {source.title[:60]}...")
-                    if not existing:
-                        beads_new += 1
-                    continue
-
-                # Store source metadata with updated_at for change detection
-                db.upsert_source(
-                    source_id=source.source_id,
-                    source_type='beads',
-                    title=source.title,
-                    path=str(source.path),
-                    created_at=source.created_at,
-                    updated_at=source.updated_at,
-                    project_path=source.project_path,
-                    content_hash=updated_at_str,
-                    metadata=source.metadata,
-                )
-
-                # Index full text (beads are already distilled)
-                # For beads, summary_text = raw_text (both are full content)
-                full_text = source.full_text()
-                db.upsert_summary(
-                    source_id=source.source_id,
-                    summary_text=full_text,
-                    has_presummary=True,
-                    raw_text=full_text,
-                )
-                db.mark_processed(source.source_id)
-
-                if existing:
-                    beads_updated += 1
-                else:
-                    beads_new += 1
-                    click.echo(f"  + {source.title[:70]}...")
-
-        # Scan arc (lightweight work tracker)
-        arc_new = 0
-        arc_updated = 0
-        arc_skipped = 0
-
-        if scan_arc:
-            click.echo(f"\nScanning arc...")
-            for source in discover_arc(config):
+        if scan_bon:
+            click.echo(f"\nScanning bon...")
+            for source in discover_bon(config):
                 existing = db.get_source(source.source_id)
                 created_at_str = source.created_at.isoformat() if source.created_at else ''
 
                 # Use done_at for change detection (items change when completed)
                 change_key = f"{created_at_str}:{source.status}"
                 if existing and existing.get('content_hash') == change_key:
-                    arc_skipped += 1
+                    bon_skipped += 1
                     continue
 
                 if dry_run:
                     status = "exists" if existing else "new"
                     click.echo(f"  [{status}] {source.source_id}: {source.title[:60]}...")
                     if not existing:
-                        arc_new += 1
+                        bon_new += 1
                     continue
 
                 db.upsert_source(
                     source_id=source.source_id,
-                    source_type='arc',
+                    source_type='bon',
                     title=source.title,
                     path=str(source.path),
                     created_at=source.created_at,
@@ -387,9 +331,9 @@ def scan(ctx, dry_run, source_filter):
                 db.mark_processed(source.source_id)
 
                 if existing:
-                    arc_updated += 1
+                    bon_updated += 1
                 else:
-                    arc_new += 1
+                    bon_new += 1
                     click.echo(f"  + {source.title[:70]}...")
 
         # Scan knowledge articles
@@ -448,18 +392,17 @@ def scan(ctx, dry_run, source_filter):
                         click.echo(f"  ... (limiting output)")
 
         if dry_run:
-            click.echo(f"\nDry run: {new_count} Claude Code, {ai_new} Claude.ai, {handoff_new} handoffs, {cloud_new} cloud, {local_md_new} local_md, {beads_new} beads, {arc_new} arc, {knowledge_new} knowledge new")
+            click.echo(f"\nDry run: {new_count} Claude Code, {ai_new} Claude.ai, {handoff_new} handoffs, {cloud_new} cloud, {local_md_new} local_md, {bon_new} bon, {knowledge_new} knowledge new")
         else:
-            total_new = new_count + ai_new + handoff_new + cloud_new + local_md_new + beads_new + arc_new + knowledge_new
-            total_updated = updated_count + ai_updated + handoff_updated + cloud_updated + local_md_updated + beads_updated + arc_updated + knowledge_updated
+            total_new = new_count + ai_new + handoff_new + cloud_new + local_md_new + bon_new + knowledge_new
+            total_updated = updated_count + ai_updated + handoff_updated + cloud_updated + local_md_updated + bon_updated + knowledge_updated
             click.echo(f"\nIndexed: {total_new} new, {total_updated} updated")
             click.echo(f"  Claude Code: {new_count} new, {updated_count} updated")
             click.echo(f"  Claude.ai: {ai_new} new, {ai_updated} updated")
             click.echo(f"  Handoffs: {handoff_new} new, {handoff_updated} updated")
             click.echo(f"  Cloud sessions: {cloud_new} new, {cloud_updated} updated")
             click.echo(f"  Local markdown: {local_md_new} new, {local_md_updated} updated, {local_md_skipped} unchanged")
-            click.echo(f"  Beads: {beads_new} new, {beads_updated} updated, {beads_skipped} unchanged")
-            click.echo(f"  Arc: {arc_new} new, {arc_updated} updated, {arc_skipped} unchanged")
+            click.echo(f"  Bon: {bon_new} new, {bon_updated} updated, {bon_skipped} unchanged")
             click.echo(f"  Knowledge: {knowledge_new} new, {knowledge_updated} updated, {knowledge_skipped} unchanged")
 
 
@@ -2196,7 +2139,7 @@ def populate_raw_text(ctx, batch_size, limit):
 
     # Find summaries missing raw_text
     # Order by source type to process working types first (claude_code, etc.)
-    # before hitting types that need special handling (local_md, beads)
+    # before hitting types that need special handling (local_md)
     query = """
         SELECT s.source_id, s.summary_text, src.source_type, src.path
         FROM summaries s
@@ -2207,7 +2150,7 @@ def populate_raw_text(ctx, batch_size, limit):
             WHEN 'claude_ai' THEN 2
             WHEN 'handoff' THEN 3
             WHEN 'cloud_session' THEN 4
-            WHEN 'beads' THEN 5
+            WHEN 'bon' THEN 5
             WHEN 'local_md' THEN 6
             ELSE 7
         END
@@ -2264,16 +2207,6 @@ def populate_raw_text(ctx, batch_size, limit):
                 # LocalMdSource.from_file needs base_path; use parent as approximation
                 source = LocalMdSource.from_file(p, p.parent)
                 raw_text = source.full_text()
-
-            elif source_type == 'beads' and p and p.exists():
-                # BeadsSource uses parse_jsonl iterator; find the specific bead by ID
-                # source_id format: "beads:{bead_id}"
-                bead_id = source_id.split(':', 1)[1] if ':' in source_id else source_id
-                workspace_path = str(p.parent.parent)
-                for bead in parse_jsonl(p, workspace_path):
-                    if bead.bead_id == bead_id:
-                        raw_text = bead.full_text()
-                        break
 
             if raw_text:
                 # Cap at 100K chars
