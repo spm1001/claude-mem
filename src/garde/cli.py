@@ -18,6 +18,7 @@ from .adapters.handoffs import discover_handoffs, HandoffSource
 from .adapters.local_md import discover_local_md, LocalMdSource
 from .adapters.bon import discover_bon, BonSource
 from .adapters.knowledge import discover_knowledge, KnowledgeSource
+from .adapters.amp import discover_amp, AmpSource
 
 
 @click.group()
@@ -33,7 +34,7 @@ def main(ctx):
 @main.command()
 @click.option('--dry-run', is_flag=True, help="Show what would be indexed without storing")
 @click.option('--source', 'source_filter',
-              type=click.Choice(['claude_code', 'claude_ai', 'handoffs', 'cloud_sessions', 'local_md', 'bon', 'knowledge']),
+              type=click.Choice(['claude_code', 'claude_ai', 'handoffs', 'cloud_sessions', 'local_md', 'bon', 'knowledge', 'amp']),
               help="Only scan this source type")
 @click.pass_context
 def scan(ctx, dry_run, source_filter):
@@ -48,6 +49,7 @@ def scan(ctx, dry_run, source_filter):
     scan_local_md = source_filter is None or source_filter == 'local_md'
     scan_bon = source_filter is None or source_filter == 'bon'
     scan_knowledge = source_filter is None or source_filter == 'knowledge'
+    scan_amp = source_filter is None or source_filter == 'amp'
 
     if not scan_claude_code:
         click.echo(f"Skipping Claude Code conversations...")
@@ -391,11 +393,61 @@ def scan(ctx, dry_run, source_filter):
                     elif knowledge_new == 11:
                         click.echo(f"  ... (limiting output)")
 
+        # Scan Amp threads
+        amp_new = 0
+        amp_updated = 0
+        amp_skipped = 0
+
+        if scan_amp:
+            click.echo(f"\nScanning Amp threads...")
+            for source in discover_amp(config):
+                existing = db.get_source(source.source_id)
+                # Use updated_at for change detection (new messages update this)
+                change_key = source.updated_at.isoformat()
+
+                if existing and existing.get('content_hash') == change_key:
+                    amp_skipped += 1
+                    continue
+
+                if dry_run:
+                    status = "exists" if existing else "new"
+                    click.echo(f"  [{status}] {source.source_id}: {source.title[:60]}")
+                    if not existing:
+                        amp_new += 1
+                    continue
+
+                db.upsert_source(
+                    source_id=source.source_id,
+                    source_type='amp',
+                    title=source.title,
+                    path=str(source.path),
+                    created_at=source.created_at,
+                    updated_at=source.updated_at,
+                    project_path=source.project_path,
+                    content_hash=change_key,
+                    metadata=source.metadata,
+                )
+
+                full_text = source.full_text()
+                if full_text:
+                    db.upsert_summary(
+                        source_id=source.source_id,
+                        summary_text=source.title,  # Title as placeholder summary
+                        has_presummary=False,
+                        raw_text=full_text,
+                    )
+
+                if existing:
+                    amp_updated += 1
+                else:
+                    amp_new += 1
+                    click.echo(f"  + {source.title[:70]}")
+
         if dry_run:
-            click.echo(f"\nDry run: {new_count} Claude Code, {ai_new} Claude.ai, {handoff_new} handoffs, {cloud_new} cloud, {local_md_new} local_md, {bon_new} bon, {knowledge_new} knowledge new")
+            click.echo(f"\nDry run: {new_count} Claude Code, {ai_new} Claude.ai, {handoff_new} handoffs, {cloud_new} cloud, {local_md_new} local_md, {bon_new} bon, {knowledge_new} knowledge, {amp_new} amp new")
         else:
-            total_new = new_count + ai_new + handoff_new + cloud_new + local_md_new + bon_new + knowledge_new
-            total_updated = updated_count + ai_updated + handoff_updated + cloud_updated + local_md_updated + bon_updated + knowledge_updated
+            total_new = new_count + ai_new + handoff_new + cloud_new + local_md_new + bon_new + knowledge_new + amp_new
+            total_updated = updated_count + ai_updated + handoff_updated + cloud_updated + local_md_updated + bon_updated + knowledge_updated + amp_updated
             click.echo(f"\nIndexed: {total_new} new, {total_updated} updated")
             click.echo(f"  Claude Code: {new_count} new, {updated_count} updated")
             click.echo(f"  Claude.ai: {ai_new} new, {ai_updated} updated")
@@ -404,6 +456,7 @@ def scan(ctx, dry_run, source_filter):
             click.echo(f"  Local markdown: {local_md_new} new, {local_md_updated} updated, {local_md_skipped} unchanged")
             click.echo(f"  Bon: {bon_new} new, {bon_updated} updated, {bon_skipped} unchanged")
             click.echo(f"  Knowledge: {knowledge_new} new, {knowledge_updated} updated, {knowledge_skipped} unchanged")
+            click.echo(f"  Amp: {amp_new} new, {amp_updated} updated, {amp_skipped} unchanged")
 
 
 def _extract_compacted_summary(content: str) -> str | None:
